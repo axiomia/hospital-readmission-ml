@@ -3,10 +3,6 @@ venv/
 .venv/
 env/
 
-# ML model files (mounted as volume at runtime)
-backend/model/*.pkl
-backend/model/*.joblib
-
 # Data files
 data/
 *.csv
