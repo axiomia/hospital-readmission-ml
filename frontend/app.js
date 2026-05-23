@@ -9,7 +9,7 @@
 // ── Configuración ────────────────────────────────────────────
 // Permite override desde la URL: ?api=https://otro-host:8000
 const urlParams = new URLSearchParams(window.location.search);
-const API_URL = urlParams.get('api') || 'http://localhost:8000';
+const API_URL = urlParams.get('api') || 'https://hospital-readmission-ml-production.up.railway.app';
 
 // Identificadores de los 16 campos del formulario,
 // en el orden esperado por el backend (FEATURES_BASE).
