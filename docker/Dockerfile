@@ -22,25 +22,18 @@ RUN useradd --create-home --shell /bin/bash appuser
 WORKDIR /app
 
 # Instalar dependencias Python (cacheable layer)
-COPY requirements.txt /app/requirements.txt
+COPY requirements-railway.txt /app/requirements.txt
 RUN pip install --upgrade pip && \
     pip install -r /app/requirements.txt
 
 # Copiar el código del backend y los modelos
 COPY backend/ /app/backend/
-COPY logs/    /app/logs/
+RUN mkdir -p /app/logs
 
 # Permisos para el usuario no-root
 RUN chown -R appuser:appuser /app
 USER appuser
 
-# Configuración de salida
-EXPOSE 8000
-
-# Healthcheck que consulta /health
-HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-    CMD curl --fail http://localhost:8000/health || exit 1
-
 # Punto de entrada
 WORKDIR /app/backend
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "${PORT:-8000}", "--workers", "1"]
