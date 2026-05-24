@@ -23,7 +23,8 @@ Documentación interactiva:
 
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 import joblib
 import numpy as np
@@ -510,3 +511,24 @@ def monitor():
             "ALTO":     33.0,
         },
     }
+
+# ═══════════════════════════════════════════════════════════════
+# Frontend estático — servido por FastAPI en producción
+# ═══════════════════════════════════════════════════════════════
+# En Railway se sirve todo desde un solo servicio.
+# El frontend se copia a /app/frontend/ en el Dockerfile.
+FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "..", "frontend")
+
+if os.path.isdir(FRONTEND_DIR):
+    # Servir index.html en la ruta /app (no en / para no colisionar con la API)
+    @app.get("/app", include_in_schema=False)
+    @app.get("/app/", include_in_schema=False)
+    def serve_frontend():
+        """Sirve el frontend estático (index.html)."""
+        return FileResponse(os.path.join(FRONTEND_DIR, "index.html"))
+
+    # Montar archivos estáticos (CSS, JS) en /static
+    app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
+    logger.info(f"[OK] Frontend estático montado desde {FRONTEND_DIR}")
+else:
+    logger.warning(f"Frontend no encontrado en {FRONTEND_DIR} — solo API disponible")
