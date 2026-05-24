@@ -5,6 +5,7 @@
     "dockerfilePath": "./docker/Dockerfile",
     "watchPatterns": [
       "backend/**",
+      "frontend/**",
       "requirements-railway.txt",
       "docker/Dockerfile"
     ]

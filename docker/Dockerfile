@@ -28,6 +28,7 @@ RUN pip install --upgrade pip && \
 
 # Copiar el código del backend y los modelos
 COPY backend/ /app/backend/
+COPY frontend/ /app/frontend/
 RUN mkdir -p /app/logs
 
 # Permisos para el usuario no-root
