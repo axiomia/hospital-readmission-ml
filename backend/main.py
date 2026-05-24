@@ -6,12 +6,15 @@ ACIF104 — Aprendizaje de Máquina · UNAB 2026
 Modelo: Ensemble ponderado calibrado (Random Forest + XGBoost + LightGBM)
         con calibración isotónica y sistema clínico de tres niveles.
 
-Endpoints expuestos:
-    GET  /              Estado general del servicio
-    GET  /health        Diagnóstico profundo de cada componente
-    GET  /model-info    Configuración del ensemble y umbrales
-    POST /predict       Predicción con SHAP y nivel de riesgo
-    GET  /monitor       Estadísticas agregadas (RNF-06)
+Estructura de rutas:
+    GET  /              Frontend estático (index.html)
+    GET  /health        Diagnóstico profundo (Railway healthcheck)
+    GET  /api/          Estado general del servicio
+    GET  /api/health    Diagnóstico profundo de cada componente
+    GET  /api/model-info Configuración del ensemble y umbrales
+    POST /api/predict   Predicción con SHAP y nivel de riesgo
+    GET  /api/monitor   Estadísticas agregadas (RNF-06)
+    GET  /static/*      Assets estáticos del frontend (CSS, JS)
 
 Ejecución:
     uvicorn main:app --host 0.0.0.0 --port 8000
@@ -21,7 +24,7 @@ Documentación interactiva:
 ═══════════════════════════════════════════════════════════════════════
 """
 
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, status, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -66,7 +69,9 @@ app = FastAPI(
     license_info={"name": "MIT"},
 )
 
-# CORS habilitado para el frontend (en producción restringir a dominios concretos)
+# CORS — necesario solo si el frontend se sirve desde otro dominio.
+# En producción Railway, frontend y API están en el mismo origen,
+# pero se mantiene para flexibilidad (desarrollo local, override con ?api=).
 app.add_middleware(
     CORSMiddleware,
     allow_origins=os.environ.get("CORS_ORIGINS", "*").split(","),
@@ -178,13 +183,6 @@ def build_features_extended(data: dict) -> np.ndarray:
     """
     Convierte los 16 atributos clínicos en un vector de 21 features
     (incluye 5 variables derivadas) y aplica el StandardScaler.
-
-    Variables derivadas:
-      • complexity       = n_inpatient × n_medications
-      • utilizacion_prev = n_inpatient + n_outpatient + n_emergency
-      • proc_per_day     = (n_procedures + n_lab_procedures) / time_in_hospital
-      • med_intensity    = n_medications / time_in_hospital
-      • risk_score_base  = 3·n_inpatient + 2·n_emergency + 2·A1C + change
     """
     df = pd.DataFrame([data])
 
@@ -295,10 +293,13 @@ class PredictionResponse(BaseModel):
 
 
 # ═══════════════════════════════════════════════════════════════
-# Endpoints
+# Router de la API — todos los endpoints bajo /api
 # ═══════════════════════════════════════════════════════════════
-@app.get("/", summary="Estado general del servicio")
-def root():
+api = APIRouter(prefix="/api", tags=["API"])
+
+
+@api.get("/", summary="Estado general del servicio")
+def api_root():
     """Información básica del servicio. Útil como health check ligero."""
     return {
         "service":  "Hospital Readmission Prediction API",
@@ -307,12 +308,12 @@ def root():
         "status":   "online" if MODEL_LOADED else "model_not_loaded",
         "course":   "ACIF104 — Aprendizaje de Máquina · UNAB 2026",
         "docs":     "/docs",
-        "endpoints": ["/", "/health", "/model-info", "/predict", "/monitor"],
+        "endpoints": ["/api/", "/api/health", "/api/model-info", "/api/predict", "/api/monitor"],
     }
 
 
-@app.get("/health", summary="Diagnóstico profundo de salud del servicio")
-def health():
+@api.get("/health", summary="Diagnóstico profundo de salud del servicio")
+def api_health():
     """
     Verifica que cada componente del ensemble esté cargado correctamente.
     Útil para sondas de Kubernetes (livenessProbe / readinessProbe).
@@ -340,8 +341,8 @@ def health():
     return response
 
 
-@app.get("/model-info", summary="Información del modelo desplegado")
-def model_info():
+@api.get("/model-info", summary="Información del modelo desplegado")
+def api_model_info():
     """Expone la configuración del ensemble: pesos, umbrales y cuenta de features."""
     return {
         "name":    "Ensemble Ponderado Calibrado",
@@ -366,24 +367,18 @@ def model_info():
     }
 
 
-@app.post(
+@api.post(
     "/predict",
     response_model=PredictionResponse,
     summary="Predecir readmisión con sistema de 3 niveles + SHAP",
 )
-def predict(data: PatientData):
+def api_predict(data: PatientData):
     """
     Recibe los 16 atributos clínicos y retorna:
       • probability        — probabilidad calibrada (0,0 – 1,0)
       • risk_level         — BAJO / MODERADO / ALTO
-      • risk_emoji         — 🟢 / 🟠 / 🔴
-      • risk_label         — etiqueta descriptiva
-      • recommended_action — protocolo clínico recomendado
-      • readmitted_binary  — clasificación binaria (umbral 0,42 → Recall ≥ 0,85)
       • shap_values        — contribución de cada variable (Tree SHAP)
-      • features           — nombres de las 21 variables
-      • model_info         — metadatos del ensemble
-      • timestamp          — fecha y hora de la predicción
+      • recommended_action — protocolo clínico recomendado
     """
     if not MODEL_LOADED:
         raise HTTPException(
@@ -462,8 +457,8 @@ def predict(data: PatientData):
         )
 
 
-@app.get("/monitor", summary="Estadísticas agregadas (RNF-06)")
-def monitor():
+@api.get("/monitor", summary="Estadísticas agregadas (RNF-06)")
+def api_monitor():
     """
     Retorna estadísticas agregadas del log de predicciones.
     Útil para detección de deriva conceptual y monitoreo del desempeño.
@@ -512,22 +507,32 @@ def monitor():
         },
     }
 
+
+# Registrar el router de la API
+app.include_router(api)
+
+
 # ═══════════════════════════════════════════════════════════════
-# Frontend estático — servido por FastAPI en producción
+# Healthcheck en raíz — Railway necesita /health accesible
 # ═══════════════════════════════════════════════════════════════
-# En Railway se sirve todo desde un solo servicio.
-# El frontend se copia a /app/frontend/ en el Dockerfile.
+@app.get("/health", include_in_schema=False)
+def health_root():
+    """Alias de /api/health para compatibilidad con Railway healthcheck."""
+    return api_health()
+
+
+# ═══════════════════════════════════════════════════════════════
+# Frontend estático — servido por FastAPI en el mismo servicio
+# ═══════════════════════════════════════════════════════════════
 FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "..", "frontend")
 
 if os.path.isdir(FRONTEND_DIR):
-    # Servir index.html en la ruta /app (no en / para no colisionar con la API)
-    @app.get("/app", include_in_schema=False)
-    @app.get("/app/", include_in_schema=False)
-    def serve_frontend():
-        """Sirve el frontend estático (index.html)."""
+    @app.get("/", include_in_schema=False)
+    def serve_index():
+        """Sirve el frontend (index.html) en la raíz del sitio."""
         return FileResponse(os.path.join(FRONTEND_DIR, "index.html"))
 
-    # Montar archivos estáticos (CSS, JS) en /static
+    # Montar assets estáticos (CSS, JS) en /static
     app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
     logger.info(f"[OK] Frontend estático montado desde {FRONTEND_DIR}")
 else:

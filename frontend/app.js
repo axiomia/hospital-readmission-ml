@@ -7,10 +7,10 @@
 'use strict';
 
 // ── Configuración ────────────────────────────────────────────
-// API_URL apunta al mismo servidor que sirve el frontend.
+// API_URL apunta al mismo servidor bajo /api.
 // Permite override desde la URL: ?api=https://otro-host:8000
 const urlParams = new URLSearchParams(window.location.search);
-const API_URL = urlParams.get('api') || window.location.origin;
+const API_URL = urlParams.get('api') || `${window.location.origin}/api`;
 
 // Identificadores de los 16 campos del formulario,
 // en el orden esperado por el backend (FEATURES_BASE).
