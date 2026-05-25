@@ -197,8 +197,8 @@ pydantic==2.6.4
 ### 3.1 Clonar el repositorio
 
 ```bash
-git clone https://github.com/cristobalacevedo/hospital-readmission-ml_unab.git
-cd hospital-readmission-ml_unab
+git clone https://github.com/axiomia/hospital-readmission-ml.git
+cd hospital-readmission-ml
 ```
 
 ### 3.2 Crear el entorno virtual de Python
@@ -565,7 +565,7 @@ python3 -m http.server 3000       # Frontend estático local
 *Equipo 3 — ACIF104 Aprendizaje de Máquina · UNAB 2026*
 
 - **Servicio en producción:** https://hospital-readmission-ml.axiomia.ai/
-- **Repositorio:** https://github.com/cristobalacevedo/hospital-readmission-ml_unab
+- **Repositorio:** https://github.com/axiomia/hospital-readmission-ml
 
 ## Equipo
 
