@@ -5,6 +5,22 @@ Sistema completo para predicción de readmisión hospitalaria en pacientes diab�
 **Asignatura:** ACIF104 — Aprendizaje de Máquina · UNAB 2026
 **Equipo:** Equipo 3
 
+## Servicio en Producción
+
+El sistema está disponible en producción en:
+
+**https://hospital-readmission-ml.axiomia.ai/**
+
+| Endpoint | URL |
+|---|---|
+| **Interfaz web** | https://hospital-readmission-ml.axiomia.ai/ |
+| **Estado API** | https://hospital-readmission-ml.axiomia.ai/api/ |
+| **Health check** | https://hospital-readmission-ml.axiomia.ai/health |
+| **Info del modelo** | https://hospital-readmission-ml.axiomia.ai/api/model-info |
+| **Predicción** | https://hospital-readmission-ml.axiomia.ai/api/predict |
+| **Monitoreo** | https://hospital-readmission-ml.axiomia.ai/api/monitor |
+| **Docs interactivos** | https://hospital-readmission-ml.axiomia.ai/docs |
+
 ## Modelo del Sistema
 
 El sistema utiliza un **ensemble ponderado calibrado** que combina tres clasificadores complementarios basados en árboles:
@@ -93,13 +109,13 @@ Equipo 3 · NRC 2182 · Santiago, Chile — 2026
 
 Este manual describe el procedimiento completo para instalar, ejecutar y desplegar como servicio el sistema de Predicción de Readmisión Hospitalaria desarrollado en el marco del proyecto del curso ACIF104 — Aprendizaje de Máquina (UNAB 2026, Equipo 3).
 
-El sistema está compuesto por tres componentes que pueden ejecutarse de forma independiente o integrada:
+El sistema está compuesto por los siguientes componentes:
 
 - **Notebook Jupyter:** pipeline completo de entrenamiento del modelo en 16 pasos secuenciales.
-- **Backend FastAPI:** servicio REST que expone el modelo entrenado mediante cinco endpoints.
-- **Frontend Web:** interfaz HTML/CSS/JavaScript para uso clínico interactivo.
+- **Backend FastAPI:** servicio REST unificado que expone el modelo entrenado mediante cinco endpoints y sirve también el frontend estático.
+- **Frontend Web:** interfaz HTML/CSS/JavaScript para uso clínico interactivo, servida directamente por FastAPI.
 
-El manual describe tres modalidades de despliegue: ejecución local con Python, ejecución contenerizada con Docker, y despliegue en producción detrás de un proxy reverso o en Kubernetes.
+El servicio unificado (backend + frontend) está disponible en producción en **https://hospital-readmission-ml.axiomia.ai/**. El manual describe también las modalidades de ejecución local con Python y contenerizada con Docker.
 
 ---
 
@@ -133,7 +149,11 @@ Para el despliegue contenerizado se requieren las siguientes versiones mínimas:
 
 ### 2.4 Dependencias Python
 
-Todas las dependencias se instalan automáticamente desde el archivo `requirements.txt` incluido en el repositorio:
+El repositorio incluye dos archivos de dependencias según el contexto de uso:
+
+#### `requirements.txt` — Desarrollo y entrenamiento completo
+
+Incluye todas las bibliotecas necesarias para ejecutar el notebook de entrenamiento y el backend:
 
 ```
 pandas==2.0.3                # Manipulación de datos
@@ -151,6 +171,23 @@ seaborn==0.13.2              # Visualizaciones estadísticas
 jupyter==1.0.0               # Notebook interactivo
 joblib==1.3.2                # Serialización de modelos
 pydantic==2.6.4              # Validación de esquemas
+```
+
+#### `requirements-railway.txt` — Producción (backend únicamente)
+
+Versión reducida para el despliegue en producción (Railway / Docker). Excluye las dependencias exclusivas del entrenamiento (`torch`, `jupyter`, `matplotlib`, `seaborn`, `imbalanced-learn`), reduciendo el tamaño de la imagen en aproximadamente 800 MB:
+
+```
+pandas==2.0.3
+numpy==1.26.4
+scikit-learn==1.4.2
+xgboost==2.0.3
+lightgbm==4.3.0
+shap==0.44.1
+fastapi==0.110.0
+uvicorn==0.27.1
+joblib==1.3.2
+pydantic==2.6.4
 ```
 
 ---
@@ -312,6 +349,8 @@ El `docker-compose.yml` monta dos volúmenes para mantener la información entre
 
 ## 7. Despliegue en Producción
 
+El servicio está desplegado y disponible públicamente en **https://hospital-readmission-ml.axiomia.ai/**. El stack de producción utiliza un único servicio FastAPI (backend + frontend estático) desplegado en Railway con `requirements-railway.txt` como conjunto de dependencias.
+
 ### 7.1 Variables de entorno
 
 El backend admite las siguientes variables para personalizar su comportamiento:
@@ -390,7 +429,7 @@ Salida esperada (HTTP 200) en formato JSON:
 ### 8.2 Predicción de prueba
 
 ```bash
-curl -X POST http://localhost:8000/predict \
+curl -X POST http://localhost:8000/api/predict \
   -H 'Content-Type: application/json' \
   -d '{ "time_in_hospital": 5, "n_lab_procedures": 45,
         "n_procedures": 1, "n_medications": 18,
@@ -404,7 +443,9 @@ curl -X POST http://localhost:8000/predict \
 
 ### 8.3 Verificación visual del frontend
 
-Abrir el navegador en http://localhost:3000 y verificar que:
+**Servicio en producción:** abrir https://hospital-readmission-ml.axiomia.ai/ directamente en el navegador.
+
+**Entorno local:** abrir http://localhost:8000 (servicio único FastAPI) y verificar que:
 
 - El formulario carga correctamente con valores por defecto.
 - Al pulsar «Predecir riesgo de readmisión» se muestra el indicador semafórico (verde, naranja o rojo).
@@ -419,11 +460,14 @@ Abrir el navegador en http://localhost:3000 y verificar que:
 
 | Método | Ruta | Propósito | Cuándo usarlo |
 |---|---|---|---|
-| **GET** | `/` | Estado general | Health check ligero, comprueba que el servicio responde. |
-| **GET** | `/health` | Diagnóstico profundo | Sondas de Kubernetes (livenessProbe / readinessProbe). |
-| **GET** | `/model-info` | Configuración del modelo | Auditoría de pesos y umbrales en producción. |
-| **POST** | `/predict` | Predicción individual | Núcleo del sistema. Recibe 16 atributos clínicos. |
-| **GET** | `/monitor` | Estadísticas agregadas | Detección de deriva conceptual del modelo. |
+| **GET** | `/` | Frontend estático | Sirve la interfaz web (index.html). |
+| **GET** | `/health` | Diagnóstico profundo (alias) | Sondas de Railway / Kubernetes (livenessProbe / readinessProbe). |
+| **GET** | `/api/` | Estado general del servicio | Health check ligero, comprueba que el servicio responde. |
+| **GET** | `/api/health` | Diagnóstico profundo | Estado de cada componente del ensemble. |
+| **GET** | `/api/model-info` | Configuración del modelo | Auditoría de pesos y umbrales en producción. |
+| **POST** | `/api/predict` | Predicción individual | Núcleo del sistema. Recibe 16 atributos clínicos. |
+| **GET** | `/api/monitor` | Estadísticas agregadas | Detección de deriva conceptual del modelo. |
+| **GET** | `/docs` | Documentación interactiva | Swagger UI generado automáticamente por FastAPI. |
 
 ### 9.2 Detección de deriva conceptual
 
@@ -461,7 +505,7 @@ Cuando se detecte deriva conceptual o se acumulen suficientes predicciones nueva
 
 **Solución 1:** verificar que el backend responde con `curl http://localhost:8000/health`.
 
-**Solución 2:** sobreescribir la URL del API en la query string del navegador, por ejemplo: `http://localhost:3000/?api=http://otro-host:8000`
+**Solución 2:** sobreescribir la URL del API en la query string del navegador, por ejemplo: `http://localhost:8000/?api=http://otro-host:8000`
 
 ### 10.3 Error de memoria al cargar XGBoost o LightGBM
 
@@ -500,9 +544,11 @@ docker compose down               # Detener y eliminar contenedores
 ### Diagnóstico
 
 ```bash
-curl http://localhost:8000/health      # Estado del backend
-curl http://localhost:8000/model-info  # Configuración del modelo
-curl http://localhost:8000/monitor     # Estadísticas agregadas
+curl http://localhost:8000/health          # Health check (alias raíz)
+curl http://localhost:8000/api/            # Estado general de la API
+curl http://localhost:8000/api/health      # Diagnóstico profundo del ensemble
+curl http://localhost:8000/api/model-info  # Configuración del modelo
+curl http://localhost:8000/api/monitor     # Estadísticas agregadas
 ```
 
 ### Desarrollo
@@ -518,7 +564,8 @@ python3 -m http.server 3000       # Frontend estático local
 
 *Equipo 3 — ACIF104 Aprendizaje de Máquina · UNAB 2026*
 
-https://github.com/cristobalacevedo/hospital-readmission-ml_unab
+- **Servicio en producción:** https://hospital-readmission-ml.axiomia.ai/
+- **Repositorio:** https://github.com/cristobalacevedo/hospital-readmission-ml_unab
 
 ## Equipo
 
